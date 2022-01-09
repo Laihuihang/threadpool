@@ -28,15 +28,13 @@ void* ThreadPool::threadFunc( void* data )
         pthread_mutex_lock( &pool->m_mutex );
         if( pool->m_task_list.size() == 0 )
         {
-            //std::cout << "111" << std::endl;
             pthread_cond_wait( &pool->m_cond, &pool->m_mutex );
         }
-        if( pool->m_task_list.size() == 0 ){
+        Task* cur = pool->m_task_list.front();
+        if( cur == NULL ){
             pthread_mutex_unlock( &pool->m_mutex );
             continue;
         }
-        Task* cur = pool->m_task_list.front();
-        //std::cout << cur << std::endl;
         pool->m_task_list.pop_front();
         pthread_mutex_unlock( &pool->m_mutex );
 
@@ -53,10 +51,11 @@ int ThreadPool::addTask(Task* task)
 {
     pthread_mutex_lock( &m_mutex );
     m_task_list.push_back( task );
+    int size = m_task_list.size();
     pthread_mutex_unlock( &m_mutex );
     // 通知线程处理消费任务
     pthread_cond_signal( &m_cond );
-    return 0;
+    return size;
 }
 
 int ThreadPool::getTaskSize()
@@ -95,15 +94,12 @@ void ThreadPool::stop()
         return;
     }
     // 消费task
-    m_shutdown = true;
     while( 1 ){
         if( m_task_list.size() == 0 ){
             break;
-        }else{
-            addTask( m_task_list.front() );
-            m_task_list.pop_front();
         }
     }
+    m_shutdown = true;
     // 等待线程运行完
     pthread_cond_broadcast( &m_cond );
     for( int i=0; i<m_max_thread_num; ++i ){
@@ -115,4 +111,9 @@ void ThreadPool::stop()
 
     pthread_mutex_destroy( &m_mutex );
     pthread_cond_destroy( &m_cond );
+}
+
+bool ThreadPool::isDestory()
+{
+    return m_shutdown;
 }

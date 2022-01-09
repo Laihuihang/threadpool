@@ -13,8 +13,23 @@ public:
     }
     void run()
     {
-        std::cout << m_num << std::endl;
-        //sleep(1);
+            std::cout << m_num << std::endl;
+            sleep(1);
+    }
+private:
+    int m_num;
+};
+
+class mytask1 : public Task{
+public:
+    mytask1(std::string name, int num):
+        Task( name ),
+        m_num( num )
+    {
+
+    }
+    void run()
+    {
         while(1){
 
         }
@@ -29,12 +44,16 @@ int main()
     ThreadPool pool( 16 );
     pool.init();
 
-    for( int i = 0; i < 100; ++i ){
+    // for( int i = 0; i < 5; ++i ){
+    //     mytask1* task = new mytask1( "lai_huihang", i );
+    //     std::cout << "task num:" << pool.addTask( task ) << std::endl;
+    // }
+    for( int i = 0; i < 1000; ++i ){
         mytask* task = new mytask( "lai_huihang", i );
-        pool.addTask( task );
+       pool.addTask( task );
     }
     sleep(3);
-    std::cout << pool.getTaskSize() << std::endl;
+    //std::cout << pool.getTaskSize() << std::endl;
     pool.stop();
     return 0;
 }

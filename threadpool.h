@@ -59,6 +59,7 @@ public:
     int addTask(Task* task);
     int getTaskSize();
     void stop();
+    bool isDestory();
 private:
     std::deque<Task*>          m_task_list;
     volatile int               m_max_thread_num;
