@@ -52,12 +52,13 @@ class ThreadPool{
 public:
     ThreadPool( int threadNum );
     virtual ~ThreadPool();
-    static void threadFunc();
+    static void* threadFunc(void*);
 
     void init();
     int createThread();
     int addTask(Task* task);
     int getTaskSize();
+    void stop();
 private:
     std::deque<Task*>          m_task_list;
     volatile int               m_max_thread_num;
@@ -65,7 +66,7 @@ private:
     pthread_cond_t             m_cond;
     pthread_mutex_t            m_mutex; 
     volatile bool              m_shutdown;
-    
+    pthread_t*                 m_pids; 
 };
 
 #endif
