@@ -1,5 +1,5 @@
 #include "threadpool.h"
-
+#include <cstring>
 #include <iostream>
 
 ThreadPool::ThreadPool ( int threadNum ) : 
@@ -26,9 +26,12 @@ void* ThreadPool::threadFunc( void* data )
     while ( !pool->m_shutdown )
     {
         pthread_mutex_lock( &pool->m_mutex );
-        if( pool->m_task_list.size() == 0 )
-        {
+        if( pool->m_task_list.size() == 0 ){
             pthread_cond_wait( &pool->m_cond, &pool->m_mutex );
+        }
+        // 当queue中堆积的任务个数大于最大线程个数，需要扩容
+        if( pool->m_task_list.size() > pool->m_max_thread_num ){
+            
         }
         Task* cur = pool->m_task_list.front();
         if( cur == NULL ){
@@ -116,4 +119,47 @@ void ThreadPool::stop()
 bool ThreadPool::isDestory()
 {
     return m_shutdown;
+}
+
+bool ThreadPool::addThread()
+{
+    pthread_mutex_lock( &m_mutex );
+    int thread_num = 2 * m_max_thread_num;
+    if( thread_num > MAX_THREAD_NUM ){
+        thread_num = MAX_THREAD_NUM;
+    }
+    pthread_t* new_pids = (pthread_t*)malloc( sizeof(pthread_t) * thread_num );
+    memcpy( new_pids, m_pids, m_max_thread_num );
+    for( int i=m_max_thread_num; i<thread_num; ++i ){
+        if( pthread_create( new_pids+i, NULL, threadFunc, this ) != 0 ){
+            return -1;
+        }
+    }
+    free( m_pids );
+    m_pids = new_pids;
+    m_max_thread_num = thread_num;
+    pthread_mutex_unlock( &m_mutex );
+    return 0;
+}
+
+bool ThreadPool::reduceThread()
+{
+    pthread_mutex_lock( &m_mutex );
+    int thread_num = m_max_thread_num / 2;
+    if( thread_num < MIN_THREAD_NUM ){
+        thread_num = MIN_THREAD_NUM;
+    }
+    pthread_t* new_pids = (pthread_t*)malloc( sizeof(pthread_t) * thread_num );
+    // 扩容容易缩容难 TAT
+    memcpy( new_pids, m_pids, thread_num );
+    for( int i=m_max_thread_num; i<thread_num; ++i ){
+        if( pthread_create( new_pids+i, NULL, threadFunc, this ) != 0 ){
+            return -1;
+        }
+    }
+    free( m_pids );
+    m_pids = new_pids;
+    m_max_thread_num = thread_num;
+    pthread_mutex_unlock( &m_mutex );
+    return 0;
 }
