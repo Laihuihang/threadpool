@@ -2,6 +2,7 @@
 #define THREADPOOL_H_
 
 #include <vector>
+#include <set>
 #include <deque>
 #include <string>
 #include <mutex>
@@ -64,11 +65,14 @@ public:
     bool reduceThread();
 private:
     std::deque<Task*>          m_task_list;
+    std::set<pthread_t>        m_running_thread_list;
+    std::set<pthread_t>        m_waiting_thread_list;
     volatile int               m_max_thread_num;
     volatile int               m_running_thread_num;
     pthread_cond_t             m_cond;
     pthread_mutex_t            m_mutex; 
     volatile bool              m_shutdown;
+    volatile bool              m_reduce_flag;
     pthread_t*                 m_pids; 
 };
 

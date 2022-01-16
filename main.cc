@@ -14,7 +14,7 @@ public:
     void run()
     {
             std::cout << m_num << std::endl;
-            sleep(1);
+            //sleep(1);
     }
 private:
     int m_num;
@@ -50,9 +50,12 @@ int main()
     // }
     for( int i = 0; i < 1000; ++i ){
         mytask* task = new mytask( "lai_huihang", i );
-       pool.addTask( task );
+        pool.addTask( task );
+        //usleep(10);
     }
-    sleep(3);
+    sleep(1);
+    mytask* task = new mytask( "lai_huihang", 1001 );
+    pool.addTask( task );
     //std::cout << pool.getTaskSize() << std::endl;
     pool.stop();
     return 0;
