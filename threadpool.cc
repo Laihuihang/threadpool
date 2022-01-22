@@ -1,13 +1,10 @@
-#include "threadpool.h"
 #include <cstring>
 #include <iostream>
-
-
+#include "threadpool.h"
 
 ThreadPool::ThreadPool ( int threadNum ) : 
     m_pids(NULL),
-    m_shutdown(false),
-    m_reduce_flag(false)
+    m_shutdown(false)
 {
     if( threadNum > MAX_THREAD_NUM ){
         m_max_thread_num = MAX_THREAD_NUM;
@@ -29,54 +26,26 @@ void* ThreadPool::threadFunc( void* data )
     while ( 1 )
     {
         pthread_mutex_lock( &pool->m_mutex );
-        while( pool->m_task_list.size() == 0 && !pool->m_shutdown && !pool->m_reduce_flag ){
+        while( pool->m_task_list.size() == 0 && !pool->m_shutdown ){
             pthread_cond_wait( &pool->m_cond, &pool->m_mutex );
         }
-
-        if( pool->m_shutdown || pool->m_reduce_flag ){
+        if( pool->m_shutdown ){
             pthread_mutex_unlock( &pool->m_mutex );
             break;
         }
         // 当queue中堆积的任务个数大于最大线程个数，需要扩容
         if( pool->m_task_list.size() > pool->m_max_thread_num ){
-            pool->addThread();
+            
         }
-        // 当空闲线程是目前运行线程的两倍时，进行缩容
-         if(  pool->m_task_list.size() == 1 && pool->m_waiting_thread_list.size() >= 2*pool->m_running_thread_list.size() ){
-             std::cout << "pool->reduceThread();" << std::endl;
-             pool->reduceThread();
-         }
-        Task* cur = pool->m_task_list.front();
+        Task cur = pool->m_task_list.front();
         pool->m_task_list.pop_front();
-        pthread_mutex_unlock( &pool->m_mutex );
 
-        if( cur->getStatus() == INIT ){
-            cur->setStatus( RUNNING );
-            pthread_mutex_lock( &pool->m_mutex );
-            pool->m_running_thread_list.insert( pthread_self() );
-            pool->m_waiting_thread_list.erase( pthread_self() );
-            pthread_mutex_unlock( &pool->m_mutex );
-            cur->run();
-            cur->setStatus( FINISHED );
-            pthread_mutex_lock( &pool->m_mutex );
-            pool->m_running_thread_list.erase( pthread_self() );
-            pool->m_waiting_thread_list.insert( pthread_self() );
-            pthread_mutex_unlock( &pool->m_mutex );
-        }
+        pthread_mutex_unlock( &pool->m_mutex );
+        cur();
     }
     return (void*)0;
 }
 
-int ThreadPool::addTask(Task* task)
-{
-    pthread_mutex_lock( &m_mutex );
-    m_task_list.push_back( task );
-    int size = m_task_list.size();
-    pthread_mutex_unlock( &m_mutex );
-    // 通知线程处理消费任务
-    pthread_cond_signal( &m_cond );
-    return size;
-}
 
 int ThreadPool::getTaskSize()
 {
@@ -88,9 +57,6 @@ int ThreadPool::getTaskSize()
 
 void ThreadPool::init()
 {
-    m_running_thread_list.clear();
-    m_waiting_thread_list.clear();
-    m_task_list.clear();
     pthread_mutex_init( &m_mutex, NULL );
     pthread_cond_init( &m_cond, NULL );
     if( createThread() != 0 ){
@@ -106,8 +72,6 @@ int ThreadPool::createThread()
         if( pthread_create( m_pids+i, NULL, threadFunc, (void*)this ) != 0 ){
             return -1;
         }
-
-        m_waiting_thread_list.insert( *( m_pids + i ) );
     }
     return 0;
 }
@@ -143,69 +107,69 @@ bool ThreadPool::isDestory()
     return m_shutdown;
 }
 
-bool ThreadPool::addThread()
-{
-    if ( m_max_thread_num == MAX_THREAD_NUM ){
-        return true;
-    }
-    int thread_num = 2 * m_max_thread_num;
-    if( thread_num > MAX_THREAD_NUM ){
-        thread_num = MAX_THREAD_NUM;
-    }
-    pthread_t* new_pids = (pthread_t*)malloc( sizeof(pthread_t) * thread_num );
-    memcpy( new_pids, m_pids, m_max_thread_num * sizeof(pthread_t) );
-    for( int i=m_max_thread_num; i<thread_num; ++i ){
-        if( pthread_create( new_pids+i, NULL, threadFunc, this ) != 0 ){
-            return false;
-        }
-    }
-    free( m_pids );
-    m_pids = new_pids;
-    m_max_thread_num = thread_num;
-    return true;
-}
+// bool ThreadPool::addThread()
+// {
+//     if ( m_max_thread_num == MAX_THREAD_NUM ){
+//         return true;
+//     }
+//     int thread_num = 2 * m_max_thread_num;
+//     if( thread_num > MAX_THREAD_NUM ){
+//         thread_num = MAX_THREAD_NUM;
+//     }
+//     pthread_t* new_pids = (pthread_t*)malloc( sizeof(pthread_t) * thread_num );
+//     memcpy( new_pids, m_pids, m_max_thread_num * sizeof(pthread_t) );
+//     for( int i=m_max_thread_num; i<thread_num; ++i ){
+//         if( pthread_create( new_pids+i, NULL, threadFunc, this ) != 0 ){
+//             return false;
+//         }
+//     }
+//     free( m_pids );
+//     m_pids = new_pids;
+//     m_max_thread_num = thread_num;
+//     return true;
+// }
 
-bool ThreadPool::reduceThread()
-{
-    if( m_max_thread_num <= MIN_THREAD_NUM ){
-        return true;
-    }
-    //std::cout << m_max_thread_num << std::endl;
-    int thread_num = m_max_thread_num / 2;
-    if( thread_num < MIN_THREAD_NUM ){
-        thread_num = MIN_THREAD_NUM;
-    }
-    pthread_t* new_pids = (pthread_t*)malloc( sizeof(pthread_t) * thread_num );
-    int index = 0;
-    // 将m_running_task_list拷贝到新的pids中
-    for( std::set<pthread_t>::iterator it = m_running_thread_list.begin(); 
-                                       it != m_running_thread_list.end(); 
-                                       it++ ){
-        new_pids[index++] = *it;
-    }
-    m_reduce_flag = true;
-    pthread_cond_broadcast( &m_cond );
-    // 这函数里面是有锁的，threadFunc里面唤醒后也要获取锁，因此线程销毁不了。
-    pthread_mutex_unlock( &m_mutex );
-    // 将多余的线程销毁掉
-    for( std::set<pthread_t>::iterator it = m_waiting_thread_list.begin(); 
-                                       it != m_waiting_thread_list.end(); 
-                                       it++ ){
-        pthread_join( *it, NULL );
-    }
-    pthread_mutex_lock( &m_mutex );
-    m_reduce_flag = false;
-    m_waiting_thread_list.clear();
-    // 将不足的线程补上
-    for( int i=m_running_thread_list.size(); i<thread_num; i++ ){
-        if( pthread_create( new_pids + i, NULL, threadFunc, (void*)this ) !=0 ){
-            return false;
-        }
-        // 更新m_waiting_task_list队列
-        m_waiting_thread_list.insert( *( m_pids + i ) );
-    }
-    free( m_pids );
-    m_pids = new_pids;
-    m_max_thread_num = thread_num;
-    return 0;
-}
+// bool ThreadPool::reduceThread()
+// {
+//     if( m_max_thread_num <= MIN_THREAD_NUM ){
+//         return true;
+//     }
+//     //std::cout << m_max_thread_num << std::endl;
+//     int thread_num = m_max_thread_num / 2;
+//     if( thread_num < MIN_THREAD_NUM ){
+//         thread_num = MIN_THREAD_NUM;
+//     }
+//     pthread_t* new_pids = (pthread_t*)malloc( sizeof(pthread_t) * thread_num );
+//     int index = 0;
+//     // 将m_running_task_list拷贝到新的pids中
+//     for( std::set<pthread_t>::iterator it = m_running_thread_list.begin(); 
+//                                        it != m_running_thread_list.end(); 
+//                                        it++ ){
+//         new_pids[index++] = *it;
+//     }
+//     m_reduce_flag = true;
+//     pthread_cond_broadcast( &m_cond );
+//     // 这函数里面是有锁的，threadFunc里面唤醒后也要获取锁，因此线程销毁不了。
+//     pthread_mutex_unlock( &m_mutex );
+//     // 将多余的线程销毁掉
+//     for( std::set<pthread_t>::iterator it = m_waiting_thread_list.begin(); 
+//                                        it != m_waiting_thread_list.end(); 
+//                                        it++ ){
+//         pthread_join( *it, NULL );
+//     }
+//     pthread_mutex_lock( &m_mutex );
+//     m_reduce_flag = false;
+//     m_waiting_thread_list.clear();
+//     // 将不足的线程补上
+//     for( int i=m_running_thread_list.size(); i<thread_num; i++ ){
+//         if( pthread_create( new_pids + i, NULL, threadFunc, (void*)this ) !=0 ){
+//             return false;
+//         }
+//         // 更新m_waiting_task_list队列
+//         m_waiting_thread_list.insert( *( m_pids + i ) );
+//     }
+//     free( m_pids );
+//     m_pids = new_pids;
+//     m_max_thread_num = thread_num;
+//     return 0;
+// }

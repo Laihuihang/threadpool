@@ -1,62 +1,41 @@
-#include "threadpool.h"
 #include "unistd.h"
 #include <string>
 #include <iostream>
+#include "threadpool.h"
 
-class mytask : public Task{
+class FUN{
 public:
-    mytask(std::string name, int num):
-        Task( name ),
-        m_num( num )
-    {
-
+    static std::string func1(int i, std::string str){
+        std::cout << "i:" << i << " str:" << str << std::endl;
+        return str;
     }
-    void run()
-    {
-            std::cout << m_num << std::endl;
-            //sleep(1);
-    }
-private:
-    int m_num;
 };
 
-class mytask1 : public Task{
-public:
-    mytask1(std::string name, int num):
-        Task( name ),
-        m_num( num )
-    {
+void func2(int j){
+    std::cout << "j:" << j << std::endl;
+}
 
+struct func3{
+    int operator() (int x){
+        std::cout << "x:" << x << std::endl;
+        return x;
     }
-    void run()
-    {
-        while(1){
-
-        }
-    }
-private:
-    int m_num;
 };
-
 
 int main()
 {
     ThreadPool pool( 16 );
     pool.init();
-
-    // for( int i = 0; i < 5; ++i ){
-    //     mytask1* task = new mytask1( "lai_huihang", i );
-    //     std::cout << "task num:" << pool.addTask( task ) << std::endl;
-    // }
-    for( int i = 0; i < 1000; ++i ){
-        mytask* task = new mytask( "lai_huihang", i );
-        pool.addTask( task );
-        //usleep(10);
-    }
+    std::future<std::string> ret = pool.addTask(FUN::func1, 1, "lai");
+    std::cout << "ret:" << ret.get() << std::endl;
     sleep(1);
-    mytask* task = new mytask( "lai_huihang", 1001 );
-    pool.addTask( task );
-    //std::cout << pool.getTaskSize() << std::endl;
+    pool.addTask(func2, 2);
+    sleep(1);
+    std::future<int> ret1 = pool.addTask(func3(), 3);
+    std::cout << "ret1:" << ret1.get() << std::endl;
+    sleep(1);
+    std::future<int> ret2 = pool.addTask([](int i, int j) -> int { std::cout << i << j << std::endl; return i+j;}, 4,5);
+    std::cout << "ret2:" << ret2.get() << std::endl;
     pool.stop();
     return 0;
 }
